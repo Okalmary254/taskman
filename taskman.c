@@ -30,6 +30,7 @@ typedef struct
 } TaskManager;
 
 TaskManager tm = {0};
+int initial_count = 0; // Number of tasks loaded from file
 
 void load_tasks()
 {
@@ -40,24 +41,63 @@ void load_tasks()
         return;
     }
 
+    int loaded_count = tm.count;
+
     while (tm.count < MAX_TASKS &&
-           fscanf(file, "%d|%d|%ld|%[^]\n",
+           fscanf(file, "%d|%d|%ld|%[^\n]",
                   &tm.tasks[tm.count].id,
                   (int *)&tm.tasks[tm.count].completed,
                   &tm.tasks[tm.count].created,
                   tm.tasks[tm.count].description) == 4)
     {
-        tm.count++;
+        int duplicate = 0;
+        for (int i = 0; i < loaded_count; i++)
+        {
+            if (tm.tasks[i].id == tm.tasks[tm.count].id)
+            {
+                duplicate = 1;
+                break;
+            }
+        }
+
+        if (!duplicate)
+        {
+            tm.count++;
+        }
     }
+
     fclose(file);
+    initial_count = tm.count;
 }
 
 void save_tasks()
 {
+    FILE *file = fopen(FILENAME, "a");
+    if (!file)
+    {
+        printf("Error: Cannot open task file for appending\n");
+        return;
+    }
+
+    for (int i = initial_count; i < tm.count; i++)
+    {
+        fprintf(file, "%d|%d|%ld|%s\n",
+                tm.tasks[i].id,
+                tm.tasks[i].completed,
+                tm.tasks[i].created,
+                tm.tasks[i].description);
+    }
+
+    fclose(file);
+    initial_count = tm.count;
+}
+
+void rewrite_all_tasks()
+{
     FILE *temp = fopen(TEMPFILE, "w");
     if (!temp)
     {
-        printf("Error: Cannot save tasks\n");
+        printf("Error: Cannot rewrite tasks\n");
         return;
     }
 
@@ -69,9 +109,11 @@ void save_tasks()
                 tm.tasks[i].created,
                 tm.tasks[i].description);
     }
+
     fclose(temp);
     remove(FILENAME);
     rename(TEMPFILE, FILENAME);
+    initial_count = tm.count;
 }
 
 int get_next_id()
@@ -159,7 +201,7 @@ void complete_task(int id)
         if (tm.tasks[i].id == id)
         {
             tm.tasks[i].completed = DONE;
-            save_tasks();
+            rewrite_all_tasks(); // Rewrite all to update status
             printf("Task #%d marked as completed!\n", id);
             return;
         }
@@ -186,7 +228,7 @@ void delete_task(int id)
                 tm.tasks[j] = tm.tasks[j + 1];
             }
             tm.count--;
-            save_tasks();
+            rewrite_all_tasks(); // Rewrite all to reflect deletion
             printf("Task #%d deleted.\n", id);
             return;
         }
@@ -202,7 +244,7 @@ void edit_task(int id, const char *new_description)
         {
             strncpy(tm.tasks[i].description, new_description, MAX_TASK_LENGTH - 1);
             tm.tasks[i].description[MAX_TASK_LENGTH - 1] = '\0';
-            save_tasks();
+            rewrite_all_tasks(); // Rewrite all to update description
             printf("Task #%d updated.\n", id);
             return;
         }
